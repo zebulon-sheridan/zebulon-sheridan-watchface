@@ -1,0 +1,9 @@
+# Build artifacts
+build/
+
+# Waf lock file (regenerated on every build)
+.lock-waf_linux_build
+
+# OS cruft
+.DS_Store
+Thumbs.db

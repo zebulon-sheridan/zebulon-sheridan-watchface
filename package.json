@@ -1,0 +1,33 @@
+{
+  "name": "zebulon-sheridan-watchface",
+  "author": "Zebulon Sheridan",
+  "version": "1.0.0",
+  "keywords": ["pebble-app", "watchface"],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "Zebulon Sheridan",
+    "uuid": "6e2f4a6c-9c8e-4b0a-8d3e-1f2a3b4c5d6e",
+    "sdkVersion": "3",
+    "enableMultiJS": false,
+    "targetPlatforms": [
+      "aplite",
+      "basalt",
+      "chalk",
+      "diorite",
+      "emery"
+    ],
+    "watchapp": {
+      "watchface": true
+    },
+    "resources": {
+      "media": [
+        {
+          "type": "png",
+          "name": "ZEBULON_WORDMARK",
+          "file": "images/zebulon-wordmark.png"
+        }
+      ]
+    }
+  }
+}
