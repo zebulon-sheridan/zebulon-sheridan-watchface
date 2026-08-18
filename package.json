@@ -25,7 +25,19 @@
         {
           "type": "png",
           "name": "ZEBULON_WORDMARK",
-          "file": "images/zebulon-wordmark.png"
+          "file": "images/zebulon-wordmark-color.png",
+          "targetPlatforms": ["basalt", "chalk", "emery"]
+        },
+        {
+          "type": "png",
+          "name": "ZEBULON_WORDMARK",
+          "file": "images/zebulon-wordmark-mono.png",
+          "targetPlatforms": ["aplite", "diorite"]
+        },
+        {
+          "type": "png",
+          "name": "ZEBULON_GLYPHS",
+          "file": "images/zebulon-glyphs.png"
         }
       ]
     }

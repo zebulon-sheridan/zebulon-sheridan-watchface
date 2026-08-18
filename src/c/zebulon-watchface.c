@@ -1,12 +1,16 @@
 #include <pebble.h>
 
 // Zebulon Sheridan — Heavy Comforter watchface.
-// Three panels: time+date up top, the name in the center, and a chiron
-// (ticker) at the bottom that scrolls lyric fragments. The chiron advances
-// on a wrist flick (accelerometer tap) and also auto-advances so it stays
-// alive on the wrist.
+// Three panels: glitched time up top, the name in the center, and a chiron
+// (ticker) at the bottom that scrolls lyric fragments. The time is drawn from a
+// monochrome glyph sheet so it reads torn/jagged on the 1-bit display instead of
+// clean system font. The chiron advances on a wrist flick (accelerometer tap)
+// and also auto-advances so it stays alive on the wrist.
 
 #define NUM_LYRICS 20
+#define GLYPH_CELL_W 34
+#define GLYPH_CELL_H 52
+#define GLYPH_GAP 2
 
 static const char *LYRICS[NUM_LYRICS] = {
   "Nothing sticks. Nothing but the rift.",
@@ -31,11 +35,15 @@ static const char *LYRICS[NUM_LYRICS] = {
   "A fraud that knows it is a fraud. That is its own kind of holiness.",
 };
 
+// advance width (px) per glyph index 0..9 (digits), 10 = colon
+static const int GLYPH_ADV[11] = {26,26,26,26,26,26,26,26,26,26,15};
+
 static Window *s_window;
-static TextLayer *s_time_layer;
+static Layer *s_time_layer;
 static TextLayer *s_date_layer;
 static BitmapLayer *s_logo_layer;
 static GBitmap *s_logo_bitmap;
+static GBitmap *s_glyph_bitmap;
 static Layer *s_chiron_layer;
 
 static char s_time_buf[8];
@@ -57,6 +65,35 @@ static void chiron_anim_update(Animation *anim, const AnimationProgress progress
 static const AnimationImplementation s_chiron_anim_impl = {
   .update = chiron_anim_update,
 };
+
+static int glyph_index(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c == ':') return 10;
+  return 10;
+}
+
+static void time_update_proc(Layer *layer, GContext *ctx) {
+  int n = strlen(s_time_buf);
+  // total width: sum of advance widths + gaps between glyphs
+  int total = 0;
+  for (int i = 0; i < n; i++) {
+    total += GLYPH_ADV[glyph_index(s_time_buf[i])];
+    if (i > 0) total += GLYPH_GAP;
+  }
+  GRect b = layer_get_bounds(layer);
+  int x = (b.size.w - total) / 2;
+  int y = (b.size.h - GLYPH_CELL_H) / 2;
+
+  for (int i = 0; i < n; i++) {
+    int idx = glyph_index(s_time_buf[i]);
+    int adv = GLYPH_ADV[idx];
+    int src_x = idx * GLYPH_CELL_W + (GLYPH_CELL_W - adv) / 2;
+    GBitmap *sub = gbitmap_create_as_sub_bitmap(s_glyph_bitmap, GRect(src_x, 0, adv, GLYPH_CELL_H));
+    graphics_draw_bitmap_in_rect(ctx, sub, GRect(x, y, adv, GLYPH_CELL_H));
+    gbitmap_destroy(sub);
+    x += adv + GLYPH_GAP;
+  }
+}
 
 static void chiron_update_proc(Layer *layer, GContext *ctx) {
   GRect b = layer_get_bounds(layer);
@@ -97,11 +134,10 @@ static void chiron_start(int index) {
       GRect(0, 0, 2000, 50),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
   s_chiron_text_w = sz.w;
-  APP_LOG(APP_LOG_LEVEL_INFO, "  text width %d", (int)s_chiron_text_w);
 
   GRect b = layer_get_bounds(s_chiron_layer);
-  s_chiron_start = b.size.w;        // begin off the right edge
-  s_chiron_end = -s_chiron_text_w;  // exit off the left edge
+  s_chiron_start = b.size.w;
+  s_chiron_end = -s_chiron_text_w;
   s_chiron_offset = s_chiron_start;
   layer_mark_dirty(s_chiron_layer);
 
@@ -130,7 +166,7 @@ static void update_time(void) {
   struct tm *tick_time = localtime(&temp);
   strftime(s_time_buf, sizeof(s_time_buf),
            clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
-  text_layer_set_text(s_time_layer, s_time_buf);
+  layer_mark_dirty(s_time_layer);
   strftime(s_date_buf, sizeof(s_date_buf), "%a %b %d", tick_time);
   text_layer_set_text(s_date_layer, s_date_buf);
 }
@@ -145,26 +181,33 @@ static void main_window_load(Window *window) {
   GRect b = layer_get_bounds(root);
   APP_LOG(APP_LOG_LEVEL_INFO, "  screen %d x %d", (int)b.size.w, (int)b.size.h);
 
-  s_time_layer = text_layer_create(GRect(0, 2, b.size.w, 48));
-  text_layer_set_background_color(s_time_layer, GColorClear);
-  text_layer_set_text_color(s_time_layer, GColorWhite);
-  text_layer_set_font(s_time_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));
-  text_layer_set_text_alignment(s_time_layer, GTextAlignmentCenter);
-  layer_add_child(root, text_layer_get_layer(s_time_layer));
+  // Glitched time (custom layer, glyph sheet)
+  s_glyph_bitmap = gbitmap_create_with_resource(RESOURCE_ID_ZEBULON_GLYPHS);
+  s_time_layer = layer_create(GRect(0, 0, b.size.w, 56));
+  layer_set_update_proc(s_time_layer, time_update_proc);
+  layer_add_child(root, s_time_layer);
 
-  s_date_layer = text_layer_create(GRect(0, 52, b.size.w, 20));
+  // Date
+  s_date_layer = text_layer_create(GRect(0, 56, b.size.w, 20));
   text_layer_set_background_color(s_date_layer, GColorClear);
   text_layer_set_text_color(s_date_layer, GColorLightGray);
   text_layer_set_font(s_date_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
   text_layer_set_text_alignment(s_date_layer, GTextAlignmentCenter);
   layer_add_child(root, text_layer_get_layer(s_date_layer));
 
+  // Wordmark: centered in the band between date and chiron
   s_logo_bitmap = gbitmap_create_with_resource(RESOURCE_ID_ZEBULON_WORDMARK);
-  s_logo_layer = bitmap_layer_create(GRect((b.size.w - 144) / 2, 72, 144, 47));
+  GSize logo_size = gbitmap_get_bounds(s_logo_bitmap).size;
+  int16_t logo_x = (b.size.w - logo_size.w) / 2;
+  int16_t logo_band_top = 78;
+  int16_t logo_band_bottom = b.size.h - 30;
+  int16_t logo_y = logo_band_top + (logo_band_bottom - logo_band_top - logo_size.h) / 2;
+  s_logo_layer = bitmap_layer_create(GRect(logo_x, logo_y, logo_size.w, logo_size.h));
   bitmap_layer_set_bitmap(s_logo_layer, s_logo_bitmap);
   bitmap_layer_set_compositing_mode(s_logo_layer, GCompOpSet);
   layer_add_child(root, bitmap_layer_get_layer(s_logo_layer));
 
+  // Chiron ticker
   s_chiron_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_chiron_layer = layer_create(GRect(0, b.size.h - 26, b.size.w, 22));
   layer_set_update_proc(s_chiron_layer, chiron_update_proc);
@@ -180,10 +223,11 @@ static void main_window_unload(Window *window) {
     s_chiron_anim = NULL;
   }
   layer_destroy(s_chiron_layer);
+  gbitmap_destroy(s_glyph_bitmap);
   gbitmap_destroy(s_logo_bitmap);
   bitmap_layer_destroy(s_logo_layer);
   text_layer_destroy(s_date_layer);
-  text_layer_destroy(s_time_layer);
+  layer_destroy(s_time_layer);
 }
 
 static void init(void) {
